@@ -374,12 +374,22 @@
 
   // ---------- data load / realtime ----------
   async function loadEntries() {
-    var res = await supabase.from("contacts").select("*").order("created_at", { ascending: true });
-    if (!res.error) {
-      entries = res.data || [];
-      document.getElementById("totalCount").textContent = String(entries.length);
-      renderResults();
+    var MAX_ENTRIES = 50000;
+    var all = [];
+    var offset = 0;
+    var requestSize = 1000;
+    while (all.length < MAX_ENTRIES) {
+      var res = await supabase.from("contacts").select("*").order("created_at", { ascending: true }).range(offset, offset + requestSize - 1);
+      if (res.error) { break; }
+      var batch = res.data || [];
+      if (batch.length === 0) break;
+      all = all.concat(batch);
+      offset += batch.length;
+      if (batch.length < requestSize) break;
     }
+    entries = all;
+    document.getElementById("totalCount").textContent = String(entries.length);
+    renderResults();
   }
 
   function subscribeRealtime() {
