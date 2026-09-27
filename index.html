@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>리박스컨설팅 고객 명단</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     --ink: #14213d; --ink-soft: #2c3a5e; --gold: #b8892b; --gold-bright: #d4a017;
@@ -117,6 +118,8 @@
     <div class="notice-banner">이 데이터는 개인정보 데이터이므로 어떠한 목적에도 외부 유출이 발생할 경우 법적인 제제가 이뤄질 수 있습니다.</div>
     <div class="count-banner">지금까지 <strong id="totalCount">–</strong>건이 모였어요</div>
     <div class="actions-row">
+      <label class="ghost" for="uploadInput" style="display:inline-flex;cursor:pointer;">📊 엑셀 업로드</label>
+      <input type="file" id="uploadInput" accept=".xlsx,.xls,.csv" style="display:none;">
       <button class="ghost" id="adminToggleBtn">🔒 관리자</button>
       <button class="gold" id="adminDownloadBtn" style="display:none;">전체 명단 다운로드</button>
     </div>
@@ -194,7 +197,9 @@
   var MIN_HASHTAGS = 3;
   var SITE_GATE_KEY = "rebox_crm_site_pw";
 
-  var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
   var entries = [];
   var searchQuery = "";
   var isAdminMode = false;
@@ -383,6 +388,94 @@
       .subscribe();
   }
 
+  // ---------- excel upload (bulk import) ----------
+  function readFileAsArrayBuffer(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  var HEADER_TO_KEY = {
+    "고객사명": "company",
+    "고객 담당자명": "person",
+    "담당자명": "person",
+    "직급": "title",
+    "이메일": "email",
+    "전화번호": "phone",
+    "고객 특이사항": "notes",
+    "작성자 (리팸 이름)": "recorder",
+    "작성자": "recorder",
+    "프로젝트 주제 해시태그": "hashtags",
+    "입력일": "updated_at",
+    "마지막 업데이트": "updated_at"
+  };
+
+  async function handleUpload(ev) {
+    var file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+
+    var label = document.querySelector('label[for="uploadInput"]');
+    var originalLabel = label.textContent;
+    label.textContent = "읽는 중…";
+
+    var buf;
+    try { buf = await readFileAsArrayBuffer(file); }
+    catch (err) { showToast("파일을 읽지 못했어요."); label.textContent = originalLabel; return; }
+
+    var wb;
+    try { wb = XLSX.read(buf, { type: "array" }); }
+    catch (err) { showToast("엑셀 형식을 읽지 못했어요."); label.textContent = originalLabel; return; }
+
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+    label.textContent = originalLabel;
+    if (!aoa.length) { showToast("빈 파일이에요."); return; }
+
+    var header = aoa[0].map(function (h) { return String(h || "").trim(); });
+    var keyByCol = header.map(function (h) { return HEADER_TO_KEY[h] || null; });
+    if (keyByCol.every(function (k) { return !k; })) {
+      showToast("항목 이름(첫 줄)을 인식하지 못했어요. 이 사이트에서 다운로드한 형식을 써주세요.");
+      return;
+    }
+
+    var seen = {};
+    entries.forEach(function (e) { seen[normalize(e.company) + "|" + normalize(e.person)] = true; });
+
+    var rows = aoa.slice(1).map(function (r) {
+      var row = { company: "", person: "", title: "", email: "", phone: "", notes: "", recorder: "", hashtags: [], updated_at: todayStr() };
+      keyByCol.forEach(function (key, i) {
+        if (!key) return;
+        var val = String(r[i] != null ? r[i] : "").trim();
+        if (key === "hashtags") row.hashtags = parseHashtags(val);
+        else row[key] = val;
+      });
+      return row;
+    }).filter(function (row) {
+      if (!row.company && !row.person) return false;
+      var key = normalize(row.company) + "|" + normalize(row.person);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+    // Note: unlike manual entry, bulk import doesn't require every field —
+    // historical spreadsheets often have gaps (missing email/phone), and we
+    // don't want to silently drop those rows.
+
+    if (!rows.length) { showToast("가져올 새 데이터가 없어요 (전부 중복이에요)."); return; }
+
+    var confirmed = await askConfirm("엑셀 업로드", rows.length + "건을 추가할게요. 진행할까요?");
+    if (!confirmed) return;
+
+    var res = await supabase.from("contacts").insert(rows);
+    if (res.error) { showToast("업로드하지 못했어요: " + res.error.message); return; }
+    showToast(rows.length + "건을 추가했어요.");
+    await loadEntries();
+  }
+
   // ---------- admin ----------
   async function handleAdminToggle() {
     var toggleBtn = document.getElementById("adminToggleBtn");
@@ -478,6 +571,7 @@
     renderTableHead();
     renderResults();
     document.getElementById("addForm").addEventListener("submit", handleSubmit);
+    document.getElementById("uploadInput").addEventListener("change", handleUpload);
     document.getElementById("adminToggleBtn").addEventListener("click", handleAdminToggle);
     document.getElementById("adminDownloadBtn").addEventListener("click", handleExport);
     document.getElementById("newSitePwBtn").addEventListener("click", handleChangeSitePassword);
