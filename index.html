@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>리박스컨설팅 고객 명단</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root {
+    --ink: #14213d; --ink-soft: #2c3a5e; --gold: #b8892b; --gold-bright: #d4a017;
+    --paper: #fbfaf7; --paper-2: #f2efe7; --line: #e2ddd0; --muted: #6b6555;
+    --danger: #a9432f; --text: #1c1a15; --card: #ffffff; --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e8ecf7; --ink-soft:#b9c2dd; --gold:#e0b03c; --gold-bright:#f0c14b;
+      --paper:#14161c; --paper-2:#1b1e26; --line:#2c3038; --muted:#9a9486; --text:#f1efe9; --card:#1c1f27; --danger:#e0684f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",system-ui,sans-serif; line-height:1.5; }
+  .shell { max-width:720px; margin:0 auto; padding:28px 20px 64px; }
+
+  .gate-overlay { position:fixed; inset:0; z-index:100; background:var(--paper); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .gate-box { max-width:340px; width:100%; text-align:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:32px 26px; }
+  .gate-mark { width:40px; height:40px; border-radius:9px; background:var(--ink); color:var(--gold-bright); display:flex; align-items:center; justify-content:center; font-weight:700; margin:0 auto 14px; }
+  .gate-box h2 { font-size:17px; margin:0 0 6px; color:var(--ink); }
+  .gate-sub { font-size:12.5px; color:var(--muted); margin:0 0 20px; }
+  .gate-box input { width:100%; border:1px solid var(--line); background:var(--paper-2); border-radius:8px; padding:11px 12px; font-size:15px; color:var(--text); text-align:center; margin-bottom:8px; font-family:inherit; }
+  .gate-error { color:var(--danger); font-size:12.5px; min-height:16px; margin:0 0 14px; }
+  .gate-box button { width:100%; padding:11px 0; }
+
+  header.top { display:flex; flex-direction:column; gap:16px; margin-bottom:24px; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .brand .mark { width:34px; height:34px; border-radius:8px; background:var(--ink); color:var(--gold-bright); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; flex-shrink:0; }
+  h1 { font-size:21px; margin:0; font-weight:700; color:var(--ink); letter-spacing:-.3px; }
+  .sub { margin:4px 0 0; color:var(--muted); font-size:13.5px; }
+
+  button.primary { background:var(--ink); color:var(--paper); border:none; padding:11px 16px; border-radius:8px; font-size:13.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+  button.primary:disabled { opacity:.5; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--ink-soft); padding:10px 14px; border-radius:8px; font-size:13px; cursor:pointer; font-family:inherit; }
+  button.ghost:hover { background:var(--paper-2); }
+  button.gold { background:var(--gold); color:#1c1206; border:none; }
+
+  .actions-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .notice-banner { background:color-mix(in srgb, var(--danger) 10%, var(--card)); border:1px solid color-mix(in srgb, var(--danger) 35%, var(--line)); color:var(--danger); border-radius:8px; padding:11px 14px; font-size:12.5px; font-weight:600; }
+  .count-banner { background:var(--paper-2); border:1px solid var(--line); border-radius:8px; padding:11px 14px; font-size:13px; color:var(--ink-soft); text-align:center; }
+  .count-banner strong { color:var(--ink); font-size:15px; }
+
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-top:16px; }
+  #addForm { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin-bottom:6px; }
+  #addForm .field { display:flex; flex-direction:column; gap:5px; min-width:140px; flex:1 1 140px; }
+  #addForm label { font-size:11.5px; color:var(--muted); font-weight:600; }
+  #addForm input { border:1px solid var(--line); background:var(--paper-2); border-radius:7px; padding:9px 10px; font-size:14px; color:var(--text); width:100%; font-family:inherit; }
+  #addForm input:focus { outline:2px solid var(--gold); outline-offset:1px; background:var(--card); }
+  #addForm button { height:38px; padding:0 16px; flex:0 0 auto; }
+  .status-line { font-size:12.5px; color:var(--muted); margin-top:10px; min-height:16px; }
+
+  .search-row { margin:22px 0 14px; }
+  .search-row input { width:100%; border:1px solid var(--line); background:var(--card); border-radius:8px; padding:11px 14px; font-size:14px; color:var(--text); font-family:inherit; }
+  .tag { display:inline-block; background:var(--paper-2); border:1px solid var(--line); color:var(--ink-soft); border-radius:999px; padding:2px 9px; font-size:11.5px; margin:2px 4px 2px 0; }
+
+  .list-head { display:flex; justify-content:space-between; align-items:center; margin:0 0 12px; gap:12px; flex-wrap:wrap; }
+  .list-head h2 { font-size:15px; margin:0; color:var(--ink); }
+  .count { color:var(--muted); font-size:13px; }
+  .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--card); }
+  table { width:100%; border-collapse:collapse; min-width:560px; }
+  thead th { text-align:left; font-size:12px; color:var(--muted); font-weight:600; padding:11px 14px; border-bottom:1px solid var(--line); background:var(--paper-2); white-space:nowrap; }
+  tbody td { padding:11px 14px; font-size:13.5px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:var(--paper-2); }
+  td.primary-col { font-weight:600; color:var(--ink); }
+  td.muted { color:var(--muted); }
+  td a { color:var(--ink-soft); text-decoration:none; }
+  .empty { padding:32px 20px; text-align:center; color:var(--muted); font-size:14px; }
+
+  .admin-panel { margin-top:10px; padding:12px 14px; border:1px dashed var(--line); border-radius:8px; background:var(--paper-2); }
+  .admin-panel label { display:block; font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  .admin-panel-row { display:flex; gap:8px; margin-bottom:10px; }
+  .admin-panel-row:last-child { margin-bottom:0; }
+  .admin-panel-row input { flex:1; border:1px solid var(--line); background:var(--card); border-radius:7px; padding:8px 10px; font-size:13.5px; color:var(--text); font-family:inherit; }
+
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(8px); background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:8px; font-size:13.5px; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; z-index:20; max-width:90vw; text-align:center; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .confirm-overlay { position:fixed; inset:0; background:rgba(10,12,18,.5); display:none; align-items:center; justify-content:center; z-index:30; padding:20px; }
+  .confirm-overlay.show { display:flex; }
+  .confirm-box { background:var(--card); border-radius:12px; padding:22px; max-width:420px; width:100%; border:1px solid var(--line); }
+  .confirm-box h3 { margin:0 0 8px; font-size:15.5px; color:var(--ink); }
+  .confirm-box p { margin:0 0 18px; font-size:13.5px; color:var(--muted); line-height:1.6; white-space:pre-line; text-align:left; }
+  .confirm-box .row { display:flex; gap:8px; justify-content:flex-end; }
+  .confirm-box input[type="password"] { width:100%; border:1px solid var(--line); background:var(--paper-2); border-radius:7px; padding:9px 10px; font-size:14px; color:var(--text); font-family:inherit; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<div id="gateOverlay" class="gate-overlay">
+  <div class="gate-box">
+    <div class="gate-mark">rB</div>
+    <h2>비밀번호를 입력해 주세요</h2>
+    <p class="gate-sub">이 사이트는 리박스컨설팅 내부 전용입니다.</p>
+    <input type="password" id="gatePwInput" placeholder="비밀번호" autocomplete="off">
+    <p id="gatePwError" class="gate-error"></p>
+    <button class="primary" id="gatePwSubmit" type="button">입장</button>
+  </div>
+</div>
+
+<div class="shell" id="appRoot" style="display:none;">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">rB</div>
+      <div>
+        <h1>리박스컨설팅 고객 명단</h1>
+        <p class="sub">명함이나 연락처를 남겨주시면 모여서 쌓여요</p>
+      </div>
+    </div>
+    <div class="notice-banner">이 데이터는 개인정보 데이터이므로 어떠한 목적에도 외부 유출이 발생할 경우 법적인 제제가 이뤄질 수 있습니다.</div>
+    <div class="count-banner">지금까지 <strong id="totalCount">–</strong>건이 모였어요</div>
+    <div class="actions-row">
+      <button class="ghost" id="adminToggleBtn">🔒 관리자</button>
+      <button class="gold" id="adminDownloadBtn" style="display:none;">전체 명단 다운로드</button>
+    </div>
+    <div class="admin-panel" id="adminPanel" style="display:none;">
+      <label>사이트 비밀번호 변경</label>
+      <div class="admin-panel-row">
+        <input type="password" id="newSitePwInput" placeholder="새 비밀번호" autocomplete="off">
+        <button class="ghost" id="newSitePwBtn">변경</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="panel">
+    <form id="addForm"></form>
+    <p class="status-line" id="formStatus"></p>
+  </div>
+
+  <div class="search-row">
+    <input id="searchInput" type="text" placeholder="고객사명·고객 담당자명·작성자·해시태그(주제)로 찾기…">
+  </div>
+  <div class="list-head">
+    <h2>검색 결과</h2>
+    <span class="count" id="countLabel">검색 전</span>
+  </div>
+  <div class="table-wrap">
+    <table id="resultsTable">
+      <thead><tr id="tableHeadRow"></tr></thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+    <div class="empty" id="emptyState">고객사명, 고객 담당자명, 작성자, 또는 해시태그(예: #OKR)로 검색해 주세요.</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="confirm-overlay" id="pwOverlay">
+    <div class="confirm-box">
+      <h3>관리자 모드</h3>
+      <p>전체 명단 보기·다운로드·설정 변경은 관리자 전용입니다. 비밀번호를 입력해 주세요.</p>
+      <input type="password" id="pwInput" placeholder="비밀번호">
+      <p id="pwError" class="gate-error" style="text-align:left;"></p>
+      <div class="row">
+        <button class="ghost" id="pwCancel">취소</button>
+        <button class="primary" id="pwOk">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">확인</h3>
+      <p id="confirmBody"></p>
+      <div class="row">
+        <button class="ghost" id="confirmCancel">취소</button>
+        <button class="primary" id="confirmOk">진행</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ======================================================================
+  // ▼▼▼ 여기 두 줄만 Supabase 프로젝트 값으로 바꿔주세요 (README 참고) ▼▼▼
+  var SUPABASE_URL = "https://klftxvpocnhczlmotrnh.supabase.co";
+  var SUPABASE_ANON_KEY = "sb_publishable_ugyqhArBzEnMe7cdb0beVA_v4gDgxmi";
+  // ▲▲▲ ---------------------------------------------------------- ▲▲▲
+  // ======================================================================
+
+  var COLUMNS = ["고객사명", "고객 담당자명", "직급", "이메일", "전화번호", "고객 특이사항"];
+  var FIELD_KEYS = ["company", "person", "title", "email", "phone", "notes"];
+  var REQUIRED_KEYS = ["company", "person", "email", "phone"];
+  var RECORDER_LABEL = "작성자 (리팸 이름)";
+  var HASHTAG_LABEL = "프로젝트 주제 해시태그";
+  var UPDATED_LABEL = "입력일";
+  var MIN_HASHTAGS = 3;
+  var SITE_GATE_KEY = "rebox_crm_site_pw";
+
+  var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  var entries = [];
+  var searchQuery = "";
+  var isAdminMode = false;
+  var sitePassword = "";
+  var adminPassword = "";
+
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function normalize(s) { return String(s == null ? "" : s).toLowerCase().replace(/\s+/g, ""); }
+  function parseHashtags(raw) {
+    return (raw || "").split(/[\s,]+/).map(function (t) { return t.trim(); }).filter(Boolean)
+      .map(function (t) { return t.charAt(0) === "#" ? t : "#" + t; });
+  }
+  function showToast(msg) {
+    var t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(function () { t.classList.remove("show"); }, 2600);
+  }
+  function askConfirm(title, body) {
+    return new Promise(function (resolve) {
+      var overlay = document.getElementById("confirmOverlay");
+      document.getElementById("confirmTitle").textContent = title;
+      document.getElementById("confirmBody").textContent = body;
+      overlay.classList.add("show");
+      var okBtn = document.getElementById("confirmOk");
+      var cancelBtn = document.getElementById("confirmCancel");
+      function cleanup(r) { overlay.classList.remove("show"); okBtn.removeEventListener("click", onOk); cancelBtn.removeEventListener("click", onCancel); resolve(r); }
+      function onOk() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+    });
+  }
+  function askAdminPassword() {
+    return new Promise(function (resolve) {
+      var overlay = document.getElementById("pwOverlay");
+      var input = document.getElementById("pwInput");
+      var err = document.getElementById("pwError");
+      input.value = ""; err.textContent = "";
+      overlay.classList.add("show");
+      setTimeout(function () { input.focus(); }, 50);
+      var okBtn = document.getElementById("pwOk");
+      var cancelBtn = document.getElementById("pwCancel");
+      function cleanup(r) { overlay.classList.remove("show"); okBtn.removeEventListener("click", onOk); cancelBtn.removeEventListener("click", onCancel); input.removeEventListener("keydown", onKey); resolve(r); }
+      function onOk() { if (input.value === adminPassword) cleanup(true); else { err.textContent = "비밀번호가 올바르지 않습니다."; input.value = ""; input.focus(); } }
+      function onCancel() { cleanup(false); }
+      function onKey(e) { if (e.key === "Enter") { e.preventDefault(); onOk(); } }
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+      input.addEventListener("keydown", onKey);
+    });
+  }
+
+  // ---------- form ----------
+  function renderForm() {
+    var form = document.getElementById("addForm");
+    var html = COLUMNS.map(function (col, i) {
+      var required = REQUIRED_KEYS.indexOf(FIELD_KEYS[i]) !== -1;
+      return '<div class="field"><label for="f' + i + '">' + escapeHtml(col) + (required ? " *" : "") + '</label>' +
+        '<input id="f' + i + '"' + (required ? " required" : "") + '></div>';
+    }).join("");
+    html += '<div class="field"><label for="recorderInput">' + RECORDER_LABEL + ' *</label><input id="recorderInput" required placeholder="예: 정태희"></div>';
+    html += '<div class="field" style="flex-basis:220px;"><label for="hashtagInput">' + HASHTAG_LABEL + ' * (3개 이상)</label><input id="hashtagInput" required placeholder="예: #OKR #리더십 #세미나"></div>';
+    html += '<div class="field" style="flex:0 0 auto;min-width:120px;"><label>' + UPDATED_LABEL + '</label><input value="' + todayStr() + '" readonly style="background:var(--paper-2);color:var(--muted);"></div>';
+    html += '<button class="primary" type="submit">추가</button>';
+    form.innerHTML = html;
+  }
+
+  function renderTableHead() {
+    var row = document.getElementById("tableHeadRow");
+    row.innerHTML = "<th>" + RECORDER_LABEL + "</th>" + COLUMNS.map(function (c) { return "<th>" + escapeHtml(c) + "</th>"; }).join("") +
+      "<th>" + HASHTAG_LABEL + "</th><th>" + UPDATED_LABEL + "</th>";
+  }
+
+  function looksLikeEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || ""); }
+  function matchesSearch(e, q) {
+    if (!q) return false;
+    q = normalize(q);
+    if (normalize(e.company).indexOf(q) !== -1 || normalize(e.person).indexOf(q) !== -1) return true;
+    var hay = normalize((e.hashtags || []).join(" "));
+    if (hay.indexOf(q) !== -1 || hay.indexOf("#" + q) !== -1) return true;
+    if (normalize(e.recorder).indexOf(q) !== -1) return true;
+    var all = normalize([e.title, e.email, e.phone, e.notes].join(" "));
+    return all.indexOf(q) !== -1;
+  }
+
+  function renderResults() {
+    var body = document.getElementById("resultsBody");
+    var empty = document.getElementById("emptyState");
+    var count = document.getElementById("countLabel");
+
+    if (!isAdminMode && !searchQuery) {
+      body.innerHTML = ""; count.textContent = "검색 전"; empty.style.display = "block";
+      empty.textContent = "고객사명, 고객 담당자명, 작성자, 또는 해시태그(예: #OKR)로 검색해 주세요.";
+      return;
+    }
+    var visible = isAdminMode && !searchQuery ? entries : entries.filter(function (e) { return matchesSearch(e, searchQuery); });
+    count.textContent = visible.length + "건" + (isAdminMode ? " (관리자 보기)" : "");
+    if (visible.length === 0) {
+      body.innerHTML = ""; empty.style.display = "block";
+      empty.textContent = (isAdminMode && !searchQuery) ? "아직 등록된 항목이 없습니다." : "검색 결과가 없어요.";
+      return;
+    }
+    empty.style.display = "none";
+    body.innerHTML = visible.map(function (e) {
+      var cells = FIELD_KEYS.map(function (key, i) {
+        var val = e[key] || "";
+        var cls = i === 0 ? "primary-col" : (val ? "" : "muted");
+        var content = val ? (looksLikeEmail(val) ? '<a href="mailto:' + escapeHtml(val) + '">' + escapeHtml(val) + "</a>" : escapeHtml(val)) : "—";
+        return '<td class="' + cls + '">' + content + "</td>";
+      }).join("");
+      var tagsHtml = (e.hashtags && e.hashtags.length)
+        ? e.hashtags.map(function (t) { return '<span class="tag">' + escapeHtml(t) + "</span>"; }).join("")
+        : '<span class="muted">—</span>';
+      return "<tr>" + '<td class="muted">' + escapeHtml(e.recorder || "—") + "</td>" + cells +
+        "<td>" + tagsHtml + "</td>" + '<td class="muted">' + escapeHtml(e.updated_at || "—") + "</td></tr>";
+    }).join("");
+  }
+
+  function isDuplicate(company, person) {
+    var c = normalize(company), p = normalize(person);
+    return entries.some(function (e) { return normalize(e.company) === c && normalize(e.person) === p; });
+  }
+
+  // ---------- add entry ----------
+  async function handleSubmit(ev) {
+    ev.preventDefault();
+    var form = ev.target;
+    var data = {};
+    var missing = false;
+    FIELD_KEYS.forEach(function (key, i) {
+      var input = document.getElementById("f" + i);
+      var val = input.value.trim();
+      data[key] = val;
+      if (REQUIRED_KEYS.indexOf(key) !== -1 && !val) missing = true;
+    });
+    var statusLine = document.getElementById("formStatus");
+    var recorder = document.getElementById("recorderInput").value.trim();
+    var hashtags = parseHashtags(document.getElementById("hashtagInput").value);
+
+    if (missing || !recorder) { statusLine.textContent = "필수 항목(*)을 입력해 주세요."; return; }
+    if (hashtags.length < MIN_HASHTAGS) { statusLine.textContent = HASHTAG_LABEL + "은(는) " + MIN_HASHTAGS + "개 이상 입력해 주세요."; return; }
+    if (isDuplicate(data.company, data.person)) { statusLine.textContent = "이미 등록된 고객사·고객 담당자예요. 중복으로 추가하지 않았어요."; return; }
+
+    var summaryLines = COLUMNS.map(function (c, i) { return c + ": " + (data[FIELD_KEYS[i]] || "(비어있음)"); });
+    summaryLines.push(RECORDER_LABEL + ": " + recorder);
+    summaryLines.push(HASHTAG_LABEL + ": " + hashtags.join(" "));
+    summaryLines.push(UPDATED_LABEL + ": " + todayStr());
+    var confirmed = await askConfirm("이 내용으로 입력을 확정할까요?", summaryLines.join("\n"));
+    if (!confirmed) return;
+
+    var submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true; statusLine.textContent = "";
+
+    var row = Object.assign({}, data, { recorder: recorder, hashtags: hashtags, updated_at: todayStr() });
+    var res = await supabase.from("contacts").insert(row).select();
+    submitBtn.disabled = false;
+    if (res.error) { statusLine.textContent = "저장하지 못했어요: " + res.error.message; showToast("저장 실패"); return; }
+    form.reset();
+    renderForm();
+    showToast("추가했어요.");
+    await loadEntries();
+  }
+
+  // ---------- data load / realtime ----------
+  async function loadEntries() {
+    var res = await supabase.from("contacts").select("*").order("created_at", { ascending: true });
+    if (!res.error) {
+      entries = res.data || [];
+      document.getElementById("totalCount").textContent = String(entries.length);
+      renderResults();
+    }
+  }
+
+  function subscribeRealtime() {
+    supabase.channel("contacts-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, function () { loadEntries(); })
+      .subscribe();
+  }
+
+  // ---------- admin ----------
+  async function handleAdminToggle() {
+    var toggleBtn = document.getElementById("adminToggleBtn");
+    var downloadBtn = document.getElementById("adminDownloadBtn");
+    var panel = document.getElementById("adminPanel");
+    if (isAdminMode) {
+      isAdminMode = false; toggleBtn.textContent = "🔒 관리자";
+      downloadBtn.style.display = "none"; panel.style.display = "none";
+      renderResults(); showToast("관리자 모드를 종료했어요."); return;
+    }
+    var ok = await askAdminPassword();
+    if (!ok) return;
+    isAdminMode = true; toggleBtn.textContent = "🔓 관리자 종료";
+    downloadBtn.style.display = "inline-flex"; panel.style.display = "block";
+    renderResults(); showToast("관리자 모드로 전환했어요.");
+  }
+
+  function findDuplicateKeys() {
+    var counts = {};
+    entries.forEach(function (e) { var k = normalize(e.company) + "|" + normalize(e.person); counts[k] = (counts[k] || 0) + 1; });
+    var dupes = {};
+    Object.keys(counts).forEach(function (k) { if (counts[k] > 1 && k !== "|") dupes[k] = true; });
+    return dupes;
+  }
+
+  async function handleExport() {
+    if (!isAdminMode) { showToast("관리자 모드에서만 다운로드할 수 있어요."); return; }
+    if (entries.length === 0) { showToast("아직 담을 데이터가 없어요."); return; }
+    var btn = document.getElementById("adminDownloadBtn");
+    btn.disabled = true; var original = btn.textContent; btn.textContent = "만드는 중…";
+    try {
+      var header = COLUMNS.concat([RECORDER_LABEL, HASHTAG_LABEL, UPDATED_LABEL]);
+      var dupes = findDuplicateKeys();
+      var wb = new ExcelJS.Workbook();
+      var ws = wb.addWorksheet("고객 명단");
+      ws.columns = header.map(function (h) { return { header: h, key: h, width: 20 }; });
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14213D" } };
+      var redFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFC7CE" } };
+      var redFont = { color: { argb: "FF9C0006" } };
+      entries.forEach(function (e) {
+        var vals = FIELD_KEYS.map(function (k) { return e[k] || ""; });
+        vals.push(e.recorder || ""); vals.push((e.hashtags || []).join(" ")); vals.push(e.updated_at || "");
+        var row = ws.addRow(vals);
+        var key = normalize(e.company) + "|" + normalize(e.person);
+        if (dupes[key]) row.eachCell(function (c) { c.fill = redFill; c.font = redFont; });
+      });
+      var buf = await wb.xlsx.writeBuffer();
+      var blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = "고객_명단_" + todayStr().replace(/-/g, "") + ".xlsx";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      showToast("다운로드했어요." + (Object.keys(dupes).length ? " 중복 항목은 빨간색으로 표시했어요." : ""));
+    } catch (err) {
+      showToast("다운로드하지 못했어요.");
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
+  }
+
+  async function handleChangeSitePassword() {
+    var input = document.getElementById("newSitePwInput");
+    var val = input.value.trim();
+    if (!val) { showToast("새 비밀번호를 입력해 주세요."); return; }
+    var res = await supabase.from("site_config").update({ value: val }).eq("key", "site_password");
+    if (res.error) { showToast("변경하지 못했어요."); return; }
+    sitePassword = val;
+    try { localStorage.setItem(SITE_GATE_KEY, val); } catch (e) {}
+    input.value = "";
+    showToast("사이트 비밀번호를 변경했어요.");
+  }
+
+  // ---------- gate ----------
+  function revealApp() {
+    document.getElementById("gateOverlay").style.display = "none";
+    document.getElementById("appRoot").style.display = "block";
+  }
+
+  async function loadSiteConfig() {
+    var res = await supabase.from("site_config").select("*").in("key", ["site_password", "admin_password"]);
+    if (!res.error && res.data) {
+      res.data.forEach(function (row) {
+        if (row.key === "site_password") sitePassword = row.value;
+        if (row.key === "admin_password") adminPassword = row.value;
+      });
+    }
+  }
+
+  async function initApp() {
+    renderForm();
+    renderTableHead();
+    renderResults();
+    document.getElementById("addForm").addEventListener("submit", handleSubmit);
+    document.getElementById("adminToggleBtn").addEventListener("click", handleAdminToggle);
+    document.getElementById("adminDownloadBtn").addEventListener("click", handleExport);
+    document.getElementById("newSitePwBtn").addEventListener("click", handleChangeSitePassword);
+    document.getElementById("searchInput").addEventListener("input", function (e) {
+      searchQuery = e.target.value.trim();
+      renderResults();
+    });
+    await loadEntries();
+    subscribeRealtime();
+  }
+
+  async function runGate() {
+    await loadSiteConfig();
+    if (!sitePassword) sitePassword = "Reboxcrm2026!";
+
+    var stored = null;
+    try { stored = localStorage.getItem(SITE_GATE_KEY); } catch (e) {}
+    if (stored && stored === sitePassword) {
+      revealApp();
+      await initApp();
+      return;
+    }
+
+    var input = document.getElementById("gatePwInput");
+    var err = document.getElementById("gatePwError");
+    var submitBtn = document.getElementById("gatePwSubmit");
+    function attempt() {
+      if (input.value === sitePassword) {
+        try { localStorage.setItem(SITE_GATE_KEY, sitePassword); } catch (e) {}
+        revealApp(); initApp();
+      } else {
+        err.textContent = "비밀번호가 올바르지 않습니다."; input.value = ""; input.focus();
+      }
+    }
+    submitBtn.addEventListener("click", attempt);
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); attempt(); } });
+    setTimeout(function () { input.focus(); }, 50);
+  }
+
+  runGate();
+})();
+</script>
+</body>
+</html>
