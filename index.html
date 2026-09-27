@@ -477,12 +477,32 @@
 
     if (!rows.length) { showToast("가져올 새 데이터가 없어요 (전부 중복이에요)."); return; }
 
-    var confirmed = await askConfirm("엑셀 업로드", rows.length + "건을 추가할게요. 진행할까요?");
+    var confirmed = await askConfirm("엑셀 업로드", rows.length + "건을 추가할게요. 데이터가 많으면 나눠서 올라가요. 진행할까요?");
     if (!confirmed) return;
 
-    var res = await supabase.from("contacts").insert(rows);
-    if (res.error) { showToast("업로드하지 못했어요: " + res.error.message); return; }
-    showToast(rows.length + "건을 추가했어요.");
+    var CHUNK_SIZE = 300;
+    var total = rows.length;
+    var doneCount = 0;
+    var failedChunks = 0;
+    label.textContent = "업로드 중… 0/" + total;
+
+    for (var i = 0; i < total; i += CHUNK_SIZE) {
+      var chunk = rows.slice(i, i + CHUNK_SIZE);
+      var res = await supabase.from("contacts").insert(chunk);
+      if (res.error) {
+        failedChunks++;
+      } else {
+        doneCount += chunk.length;
+      }
+      label.textContent = "업로드 중… " + Math.min(i + CHUNK_SIZE, total) + "/" + total;
+    }
+    label.textContent = originalLabel;
+
+    if (failedChunks > 0) {
+      showToast(doneCount + "건 추가했지만, 일부(" + failedChunks + "개 묶음)는 실패했어요.");
+    } else {
+      showToast(doneCount + "건을 추가했어요.");
+    }
     await loadEntries();
   }
 
