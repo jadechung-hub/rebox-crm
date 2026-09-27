@@ -431,7 +431,7 @@
     catch (err) { showToast("엑셀 형식을 읽지 못했어요."); label.textContent = originalLabel; return; }
 
     var ws = wb.Sheets[wb.SheetNames[0]];
-    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false, raw: false });
     label.textContent = originalLabel;
     if (!aoa.length) { showToast("빈 파일이에요."); return; }
 
@@ -445,12 +445,22 @@
     var seen = {};
     entries.forEach(function (e) { seen[normalize(e.company) + "|" + normalize(e.person)] = true; });
 
+    function excelSerialToDate(n) {
+      var d = new Date(Math.round((n - 25569) * 86400 * 1000));
+      return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+    }
+
     var rows = aoa.slice(1).map(function (r) {
       var row = { company: "", person: "", title: "", email: "", phone: "", notes: "", recorder: "", hashtags: [], updated_at: todayStr() };
       keyByCol.forEach(function (key, i) {
         if (!key) return;
         var val = String(r[i] != null ? r[i] : "").trim();
         if (key === "hashtags") row.hashtags = parseHashtags(val);
+        else if (key === "updated_at") {
+          if (/^\d{4,6}$/.test(val)) row.updated_at = excelSerialToDate(Number(val));
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) row.updated_at = val;
+          else row.updated_at = todayStr();
+        }
         else row[key] = val;
       });
       return row;
