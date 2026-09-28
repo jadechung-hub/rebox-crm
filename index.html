@@ -197,6 +197,22 @@
       </div>
     </div>
   </div>
+
+  <div class="confirm-overlay" id="emailOverlay">
+    <div class="confirm-box" style="max-width:520px;text-align:left;">
+      <h3>선택한 사람들에게 이메일 보내기</h3>
+      <p style="margin-bottom:6px;">아래 주소를 복사해서 Gmail·Outlook 등 쓰시는 메일함의 <strong>받는사람(또는 숨은참조)</strong>에 붙여넣으세요.</p>
+      <textarea id="emailListText" readonly style="width:100%;min-height:90px;border:1px solid var(--line);background:var(--paper-2);border-radius:7px;padding:9px 10px;font-size:13px;color:var(--text);font-family:inherit;resize:vertical;margin-bottom:10px;"></textarea>
+      <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+        <button class="primary" id="emailCopyBtn">📋 주소 복사하기</button>
+        <a class="ghost" id="emailGmailLink" href="#" target="_blank" style="text-decoration:none;display:inline-flex;align-items:center;padding:10px 14px;">Gmail로 새 메일 쓰기</a>
+        <a class="ghost" id="emailMailtoLink" href="#" style="text-decoration:none;display:inline-flex;align-items:center;padding:10px 14px;">내 메일 앱으로 열기</a>
+      </div>
+      <div class="row">
+        <button class="ghost" id="emailCloseBtn">닫기</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -409,9 +425,14 @@
       return;
     }
     var missing = chosen.length - uniqueEmails.length;
-    var mailto = "mailto:?bcc=" + encodeURIComponent(uniqueEmails.join(","));
-    window.location.href = mailto;
-    showToast(uniqueEmails.length + "명에게 보낼 이메일 창을 열었어요." + (missing > 0 ? " (이메일 없는 " + missing + "명은 제외)" : ""));
+    var joined = uniqueEmails.join(", ");
+
+    document.getElementById("emailListText").value = joined;
+    document.getElementById("emailGmailLink").href =
+      "https://mail.google.com/mail/?view=cm&fs=1&bcc=" + encodeURIComponent(uniqueEmails.join(","));
+    document.getElementById("emailMailtoLink").href = "mailto:?bcc=" + encodeURIComponent(uniqueEmails.join(","));
+    document.getElementById("emailOverlay").classList.add("show");
+    if (missing > 0) showToast("이메일 없는 " + missing + "명은 제외했어요.");
   }
 
 
@@ -771,6 +792,21 @@
     });
     document.getElementById("selectAllCheckbox").addEventListener("change", handleSelectAllToggle);
     document.getElementById("emailSelectedBtn").addEventListener("click", handleEmailSelected);
+    document.getElementById("emailCloseBtn").addEventListener("click", function () {
+      document.getElementById("emailOverlay").classList.remove("show");
+    });
+    document.getElementById("emailCopyBtn").addEventListener("click", async function () {
+      var text = document.getElementById("emailListText").value;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("복사했어요! 메일함에 붙여넣으세요.");
+      } catch (err) {
+        var ta = document.getElementById("emailListText");
+        ta.select();
+        try { document.execCommand("copy"); showToast("복사했어요! 메일함에 붙여넣으세요."); }
+        catch (e2) { showToast("복사에 실패했어요. 직접 선택해서 복사해주세요."); }
+      }
+    });
     await loadEntries();
     subscribeRealtime();
   }
